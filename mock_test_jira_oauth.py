@@ -101,6 +101,25 @@ class TestJiraOAuth3LO(unittest.TestCase):
         self.assertEqual(len(result), 2)
         self.assertEqual(result[0]["key"], "PROJ-1")
 
+    @patch("JiraOAuth3LO.requests.get")
+    @patch.object(JiraOAuth3LO, 'get_accessible_resources')
+    @patch.object(JiraOAuth3LO, 'get_token')
+    def test_list_projects(self, mock_get_token, mock_get_accessible_resources, mock_get):
+        mock_get_token.return_value = "dummy_token"
+        self.jira.cloud_id = "cloud123"
+        mock_get.return_value = MagicMock(
+            status_code=200,
+            json=lambda: {"values": [
+                {"key": "PROJ1", "name": "Project 1"},
+                {"key": "PROJ2", "name": "Project 2"}
+            ]},
+            raise_for_status=lambda: None
+        )
+        projects = self.jira.list_projects()
+        self.assertEqual(len(projects), 2)
+        self.assertEqual(projects[0]["key"], "PROJ1")
+        self.assertEqual(projects[1]["key"], "PROJ2")
+
     def test_extract_user_data(self):
         ticket = {
             "fields": {
@@ -115,6 +134,31 @@ class TestJiraOAuth3LO(unittest.TestCase):
         self.assertEqual(user_data["reporter"], "Jane Smith")
         self.assertIn("john.doe", user_data["mentions"])
         self.assertIn("jane.smith", user_data["mentions"])
+
+    @patch("JiraOAuth3LO.requests.post")
+    @patch.object(JiraOAuth3LO, 'get_accessible_resources')
+    @patch.object(JiraOAuth3LO, 'get_token')
+    def test_add_comment(self, mock_get_token, mock_get_accessible_resources, mock_post):
+        mock_get_token.return_value = "dummy_token"
+        self.jira.cloud_id = "cloud123"
+        mock_post.return_value = MagicMock(status_code=201, json=lambda: {"id": "10001", "body": {"content": []}}, raise_for_status=lambda: None)
+        result = self.jira.add_comment("PROJ-1", "Test comment")
+        self.assertEqual(result["id"], "10001")
+
+    @patch("JiraOAuth3LO.requests.get")
+    @patch.object(JiraOAuth3LO, 'get_accessible_resources')
+    @patch.object(JiraOAuth3LO, 'get_token')
+    def test_get_comments(self, mock_get_token, mock_get_accessible_resources, mock_get):
+        mock_get_token.return_value = "dummy_token"
+        self.jira.cloud_id = "cloud123"
+        mock_get.return_value = MagicMock(status_code=200, json=lambda: {"comments": [{"id": "10001", "body": {"content": []}}]}, raise_for_status=lambda: None)
+        comments = self.jira.get_comments("PROJ-1")
+        self.assertEqual(len(comments), 1)
+        self.assertEqual(comments[0]["id"], "10001")
+
+    def test_react_to_comment(self):
+        with self.assertRaises(NotImplementedError):
+            self.jira.react_to_comment("10001", ":thumbsup:")
 
 if __name__ == "__main__":
     unittest.main()
