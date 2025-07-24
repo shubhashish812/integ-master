@@ -41,5 +41,80 @@ class TestJiraOAuth3LO(unittest.TestCase):
         self.jira.cache_token_to_redis(token, 3600)
         self.mock_redis.set.assert_called()
 
+    @patch("JiraOAuth3LO.requests.post")
+    @patch.object(JiraOAuth3LO, 'get_accessible_resources')
+    @patch.object(JiraOAuth3LO, 'get_token')
+    def test_create_ticket(self, mock_get_token, mock_get_accessible_resources, mock_post):
+        mock_get_token.return_value = "dummy_token"
+        self.jira.cloud_id = "cloud123"
+        mock_post.return_value = MagicMock(status_code=201, json=lambda: {"key": "PROJ-1"}, raise_for_status=lambda: None)
+        data = {
+            "fields": {
+                "project": {"key": "PROJ"},
+                "summary": "Test issue",
+                "description": "Test desc",
+                "issuetype": {"name": "Task"}
+            }
+        }
+        result = self.jira.create_ticket(data)
+        self.assertEqual(result["key"], "PROJ-1")
+
+    @patch("JiraOAuth3LO.requests.put")
+    @patch.object(JiraOAuth3LO, 'get_accessible_resources')
+    @patch.object(JiraOAuth3LO, 'get_token')
+    def test_update_ticket(self, mock_get_token, mock_get_accessible_resources, mock_put):
+        mock_get_token.return_value = "dummy_token"
+        self.jira.cloud_id = "cloud123"
+        mock_put.return_value = MagicMock(status_code=204, raise_for_status=lambda: None)
+        data = {"fields": {"summary": "Updated"}}
+        result = self.jira.update_ticket("PROJ-1", data)
+        self.assertTrue(result)
+
+    @patch("JiraOAuth3LO.requests.delete")
+    @patch.object(JiraOAuth3LO, 'get_accessible_resources')
+    @patch.object(JiraOAuth3LO, 'get_token')
+    def test_delete_ticket(self, mock_get_token, mock_get_accessible_resources, mock_delete):
+        mock_get_token.return_value = "dummy_token"
+        self.jira.cloud_id = "cloud123"
+        mock_delete.return_value = MagicMock(status_code=204, raise_for_status=lambda: None)
+        result = self.jira.delete_ticket("PROJ-1")
+        self.assertTrue(result)
+
+    @patch("JiraOAuth3LO.requests.get")
+    @patch.object(JiraOAuth3LO, 'get_accessible_resources')
+    @patch.object(JiraOAuth3LO, 'get_token')
+    def test_get_ticket(self, mock_get_token, mock_get_accessible_resources, mock_get):
+        mock_get_token.return_value = "dummy_token"
+        self.jira.cloud_id = "cloud123"
+        mock_get.return_value = MagicMock(status_code=200, json=lambda: {"key": "PROJ-1"}, raise_for_status=lambda: None)
+        result = self.jira.get_ticket("PROJ-1")
+        self.assertEqual(result["key"], "PROJ-1")
+
+    @patch("JiraOAuth3LO.requests.get")
+    @patch.object(JiraOAuth3LO, 'get_accessible_resources')
+    @patch.object(JiraOAuth3LO, 'get_token')
+    def test_list_tickets(self, mock_get_token, mock_get_accessible_resources, mock_get):
+        mock_get_token.return_value = "dummy_token"
+        self.jira.cloud_id = "cloud123"
+        mock_get.return_value = MagicMock(status_code=200, json=lambda: {"issues": [{"key": "PROJ-1"}, {"key": "PROJ-2"}]}, raise_for_status=lambda: None)
+        result = self.jira.list_tickets("PROJ")
+        self.assertEqual(len(result), 2)
+        self.assertEqual(result[0]["key"], "PROJ-1")
+
+    def test_extract_user_data(self):
+        ticket = {
+            "fields": {
+                "assignee": {"displayName": "John Doe"},
+                "reporter": {"displayName": "Jane Smith"},
+                "description": "Hello @john.doe, please review.",
+                "comment": {"comments": [{"body": "Thanks @jane.smith!"}]}
+            }
+        }
+        user_data = self.jira.extract_user_data(ticket)
+        self.assertEqual(user_data["assignee"], "John Doe")
+        self.assertEqual(user_data["reporter"], "Jane Smith")
+        self.assertIn("john.doe", user_data["mentions"])
+        self.assertIn("jane.smith", user_data["mentions"])
+
 if __name__ == "__main__":
     unittest.main()

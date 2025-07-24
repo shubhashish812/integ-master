@@ -135,3 +135,196 @@ class JiraOAuth3LO:
         except Exception as e:
             logger.error(f"Failed to get token: {e}")
             raise Exception(f"Failed to get token: {e}")
+
+    def create_ticket(self, data):
+        """
+        Create a new Jira ticket (issue) using the Jira Cloud REST API.
+        'data' should be a dict with required fields, e.g.:
+        {
+            "fields": {
+                "project": {"key": "PROJ"},
+                "summary": "Issue summary",
+                "description": "Issue description",
+                "issuetype": {"name": "Task"}
+            }
+        }
+        """
+        try:
+            access_token = self.get_token()
+            if not hasattr(self, 'cloud_id'):
+                # Fetch and set cloud_id if not already set
+                resources = self.get_accessible_resources(access_token)
+                if resources and isinstance(resources, list) and 'id' in resources[0]:
+                    self.cloud_id = resources[0]['id']
+                else:
+                    raise Exception("Could not determine Jira cloud_id.")
+            url = f"https://api.atlassian.com/ex/jira/{self.cloud_id}/rest/api/3/issue"
+            headers = {
+                "Authorization": f"Bearer {access_token}",
+                "Accept": "application/json",
+                "Content-Type": "application/json"
+            }
+            response = requests.post(url, json=data, headers=headers)
+            if response.status_code == 400:
+                print("Jira API 400 Bad Request:", response.text)
+            response.raise_for_status()
+            return response.json()
+        except Exception as e:
+            logger.error(f"Failed to create Jira ticket: {e}")
+            raise Exception(f"Failed to create Jira ticket: {e}")
+
+    def update_ticket(self, ticket_id, data):
+        """
+        Update an existing Jira ticket (issue) using the Jira Cloud REST API.
+        'data' should be a dict with fields to update.
+        """
+        try:
+            access_token = self.get_token()
+            if not hasattr(self, 'cloud_id'):
+                resources = self.get_accessible_resources(access_token)
+                if resources and isinstance(resources, list) and 'id' in resources[0]:
+                    self.cloud_id = resources[0]['id']
+                else:
+                    raise Exception("Could not determine Jira cloud_id.")
+            url = f"https://api.atlassian.com/ex/jira/{self.cloud_id}/rest/api/3/issue/{ticket_id}"
+            headers = {
+                "Authorization": f"Bearer {access_token}",
+                "Accept": "application/json",
+                "Content-Type": "application/json"
+            }
+            response = requests.put(url, json=data, headers=headers)
+            response.raise_for_status()
+            return response.status_code == 204
+        except Exception as e:
+            logger.error(f"Failed to update Jira ticket: {e}")
+            raise Exception(f"Failed to update Jira ticket: {e}")
+
+    def delete_ticket(self, ticket_id):
+        """
+        Delete a Jira ticket (issue) using the Jira Cloud REST API.
+        """
+        try:
+            access_token = self.get_token()
+            if not hasattr(self, 'cloud_id'):
+                resources = self.get_accessible_resources(access_token)
+                if resources and isinstance(resources, list) and 'id' in resources[0]:
+                    self.cloud_id = resources[0]['id']
+                else:
+                    raise Exception("Could not determine Jira cloud_id.")
+            url = f"https://api.atlassian.com/ex/jira/{self.cloud_id}/rest/api/3/issue/{ticket_id}"
+            headers = {
+                "Authorization": f"Bearer {access_token}",
+                "Accept": "application/json"
+            }
+            response = requests.delete(url, headers=headers)
+            response.raise_for_status()
+            return response.status_code == 204
+        except Exception as e:
+            logger.error(f"Failed to delete Jira ticket: {e}")
+            raise Exception(f"Failed to delete Jira ticket: {e}")
+
+    def get_ticket(self, ticket_id):
+        """
+        Retrieve a Jira ticket (issue) using the Jira Cloud REST API.
+        """
+        try:
+            access_token = self.get_token()
+            if not hasattr(self, 'cloud_id'):
+                resources = self.get_accessible_resources(access_token)
+                if resources and isinstance(resources, list) and 'id' in resources[0]:
+                    self.cloud_id = resources[0]['id']
+                else:
+                    raise Exception("Could not determine Jira cloud_id.")
+            url = f"https://api.atlassian.com/ex/jira/{self.cloud_id}/rest/api/3/issue/{ticket_id}"
+            headers = {
+                "Authorization": f"Bearer {access_token}",
+                "Accept": "application/json"
+            }
+            response = requests.get(url, headers=headers)
+            response.raise_for_status()
+            return response.json()
+        except Exception as e:
+            logger.error(f"Failed to get Jira ticket: {e}")
+            raise Exception(f"Failed to get Jira ticket: {e}")
+
+    def list_tickets(self, project_key, jql=None):
+        """
+        List tickets (issues) in a Jira project using the Jira Cloud REST API.
+        Optionally, a JQL query can be provided for advanced filtering.
+        """
+        try:
+            access_token = self.get_token()
+            if not hasattr(self, 'cloud_id'):
+                resources = self.get_accessible_resources(access_token)
+                if resources and isinstance(resources, list) and 'id' in resources[0]:
+                    self.cloud_id = resources[0]['id']
+                else:
+                    raise Exception("Could not determine Jira cloud_id.")
+            url = f"https://api.atlassian.com/ex/jira/{self.cloud_id}/rest/api/3/search"
+            headers = {
+                "Authorization": f"Bearer {access_token}",
+                "Accept": "application/json"
+            }
+            if jql is None:
+                jql = f'project={project_key}'
+            params = {"jql": jql}
+            response = requests.get(url, headers=headers, params=params)
+            response.raise_for_status()
+            return response.json().get('issues', [])
+        except Exception as e:
+            logger.error(f"Failed to list Jira tickets: {e}")
+            raise Exception(f"Failed to list Jira tickets: {e}")
+
+    def extract_user_data(self, ticket):
+        """
+        Extract assigned user, reporter, and mentions in description/comments from a Jira ticket dict.
+        Returns a dict with 'assignee', 'reporter', and 'mentions'.
+        """
+        user_data = {
+            'assignee': None,
+            'reporter': None,
+            'mentions': set()
+        }
+        try:
+            fields = ticket.get('fields', {})
+            # Assignee
+            assignee = fields.get('assignee')
+            if assignee:
+                user_data['assignee'] = assignee.get('displayName') or assignee.get('name')
+            # Reporter
+            reporter = fields.get('reporter')
+            if reporter:
+                user_data['reporter'] = reporter.get('displayName') or reporter.get('name')
+            # Mentions in description
+            description = fields.get('description', '')
+            import re
+            if isinstance(description, dict) and 'content' in description:
+                # Jira Cloud may use Atlassian Document Format (ADF)
+                def extract_mentions_adf(adf):
+                    mentions = set()
+                    if isinstance(adf, dict):
+                        if adf.get('type') == 'mention' and 'attrs' in adf:
+                            mentions.add(adf['attrs'].get('text'))
+                        for v in adf.values():
+                            if isinstance(v, (dict, list)):
+                                mentions.update(extract_mentions_adf(v))
+                    elif isinstance(adf, list):
+                        for item in adf:
+                            mentions.update(extract_mentions_adf(item))
+                    return mentions
+                user_data['mentions'].update(extract_mentions_adf(description))
+            elif isinstance(description, str):
+                user_data['mentions'].update(re.findall(r'@([\w.\-]+)', description))
+            # Mentions in comments
+            comments = fields.get('comment', {}).get('comments', [])
+            for comment in comments:
+                body = comment.get('body', '')
+                if isinstance(body, dict):
+                    user_data['mentions'].update(extract_mentions_adf(body))
+                elif isinstance(body, str):
+                    user_data['mentions'].update(re.findall(r'@([\w.\-]+)', body))
+            user_data['mentions'] = list(user_data['mentions'])
+            return user_data
+        except Exception as e:
+            logger.error(f"Failed to extract user data: {e}")
+            raise Exception(f"Failed to extract user data: {e}")
