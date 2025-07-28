@@ -275,6 +275,31 @@ class JiraOAuth3LO:
             logger.error(f"Failed to list Jira tickets: {e}")
             raise Exception(f"Failed to list Jira tickets: {e}")
 
+    def list_projects(self):
+        """
+        List all Jira projects accessible to the user using the Jira Cloud REST API.
+        Returns a list of project objects.
+        """
+        try:
+            access_token = self.get_token()
+            if not hasattr(self, 'cloud_id'):
+                resources = self.get_accessible_resources(access_token)
+                if resources and isinstance(resources, list) and 'id' in resources[0]:
+                    self.cloud_id = resources[0]['id']
+                else:
+                    raise Exception("Could not determine Jira cloud_id.")
+            url = f"https://api.atlassian.com/ex/jira/{self.cloud_id}/rest/api/3/project/search"
+            headers = {
+                "Authorization": f"Bearer {access_token}",
+                "Accept": "application/json"
+            }
+            response = requests.get(url, headers=headers)
+            response.raise_for_status()
+            return response.json().get('values', [])
+        except Exception as e:
+            logger.error(f"Failed to list Jira projects: {e}")
+            raise Exception(f"Failed to list Jira projects: {e}")
+
     def extract_user_data(self, ticket):
         """
         Extract assigned user, reporter, and mentions in description/comments from a Jira ticket dict.
@@ -328,3 +353,79 @@ class JiraOAuth3LO:
         except Exception as e:
             logger.error(f"Failed to extract user data: {e}")
             raise Exception(f"Failed to extract user data: {e}")
+
+    def add_comment(self, ticket_id, comment):
+        """
+        Add a comment to a Jira ticket (issue).
+        'comment' should be a string or Atlassian Document Format object.
+        """
+        try:
+            access_token = self.get_token()
+            if not hasattr(self, 'cloud_id'):
+                resources = self.get_accessible_resources(access_token)
+                if resources and isinstance(resources, list) and 'id' in resources[0]:
+                    self.cloud_id = resources[0]['id']
+                else:
+                    raise Exception("Could not determine Jira cloud_id.")
+            url = f"https://api.atlassian.com/ex/jira/{self.cloud_id}/rest/api/3/issue/{ticket_id}/comment"
+            headers = {
+                "Authorization": f"Bearer {access_token}",
+                "Accept": "application/json",
+                "Content-Type": "application/json"
+            }
+            # Support both plain string and ADF
+            if isinstance(comment, str):
+                comment_body = {
+                    "body": {
+                        "type": "doc",
+                        "version": 1,
+                        "content": [
+                            {
+                                "type": "paragraph",
+                                "content": [
+                                    {"type": "text", "text": comment}
+                                ]
+                            }
+                        ]
+                    }
+                }
+            else:
+                comment_body = {"body": comment}
+            response = requests.post(url, json=comment_body, headers=headers)
+            response.raise_for_status()
+            return response.json()
+        except Exception as e:
+            logger.error(f"Failed to add comment: {e}")
+            raise Exception(f"Failed to add comment: {e}")
+
+    def get_comments(self, ticket_id):
+        """
+        Get all comments for a Jira ticket (issue).
+        Returns a list of comment objects.
+        """
+        try:
+            access_token = self.get_token()
+            if not hasattr(self, 'cloud_id'):
+                resources = self.get_accessible_resources(access_token)
+                if resources and isinstance(resources, list) and 'id' in resources[0]:
+                    self.cloud_id = resources[0]['id']
+                else:
+                    raise Exception("Could not determine Jira cloud_id.")
+            url = f"https://api.atlassian.com/ex/jira/{self.cloud_id}/rest/api/3/issue/{ticket_id}/comment"
+            headers = {
+                "Authorization": f"Bearer {access_token}",
+                "Accept": "application/json"
+            }
+            response = requests.get(url, headers=headers)
+            response.raise_for_status()
+            return response.json().get('comments', [])
+        except Exception as e:
+            logger.error(f"Failed to get comments: {e}")
+            raise Exception(f"Failed to get comments: {e}")
+
+    def react_to_comment(self, comment_id, reaction):
+        """
+        Placeholder for adding a reaction to a comment. Jira Cloud does not natively support comment reactions via API.
+        """
+        logger.warning("Jira Cloud API does not support comment reactions. This is a placeholder.")
+        raise NotImplementedError("Jira Cloud API does not support comment reactions.")
