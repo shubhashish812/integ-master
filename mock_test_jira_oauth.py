@@ -1,11 +1,18 @@
 import unittest
 from unittest.mock import patch, MagicMock
-from JiraOAuth3LO import JiraOAuth3LO
+from JiraOAuth3LO import JiraOAuth3LO, JiraAuthBase
 
 class TestJiraOAuth3LO(unittest.TestCase):
     def setUp(self):
         self.mock_redis = MagicMock()
         self.jira = JiraOAuth3LO("client_id", "client_secret", "redirect_uri", redis_client=self.mock_redis)
+
+    def test_authbase_get_token(self):
+        # Test JiraAuthBase authentication logic
+        auth = JiraAuthBase("client_id", "client_secret", "redirect_uri", redis_client=self.mock_redis)
+        with patch.object(auth, 'load_token', return_value={"access_token": "abc"}):
+            token = auth.get_token()
+            self.assertEqual(token, "abc")
 
     @patch("JiraOAuth3LO.requests.post")
     def test_call_token_api(self, mock_post):
